@@ -68,7 +68,7 @@ private struct WindowRow: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(.quaternary)
                     Capsule()
-                        .fill(Color(nsColor: BarRenderer.color(for: window?.utilization ?? 0)))
+                        .fill(Color(nsColor: BarRenderer.color(for: severity)))
                         .frame(width: geo.size.width * pct)
                     if let elapsed = window?.elapsedFraction(windowLength: kind.length, now: now) {
                         Rectangle()
@@ -81,11 +81,35 @@ private struct WindowRow: View {
             .frame(height: 8)
 
             if let resetsAt = window?.resetsAt {
-                Text("Resets in \(remaining(until: resetsAt)) · \(resetsAt.formatted(resetFormat))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if severity == .exhausted {
+                    Label("Limit reached · back \(resetsAt.formatted(resetFormat)) (in \(remaining(until: resetsAt)))",
+                          systemImage: "exclamationmark.octagon.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                } else {
+                    Text("Resets in \(remaining(until: resetsAt)) · \(resetsAt.formatted(resetFormat))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let note = paceNote {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(Color(nsColor: BarRenderer.color(for: severity)))
+                    }
+                }
             }
         }
+    }
+
+    private var severity: Severity {
+        window?.severity(windowLength: kind.length, now: now) ?? .normal
+    }
+
+    /// Explains a warning color that comes from pace rather than the raw percentage.
+    private var paceNote: String? {
+        guard let window, let elapsed = window.elapsedFraction(windowLength: kind.length, now: now),
+              severity > .normal else { return nil }
+        let ahead = Int((window.utilization - elapsed * 100).rounded())
+        return ahead > 10 ? "\(ahead) pts ahead of pace" : nil
     }
 
     private var resetFormat: Date.FormatStyle {

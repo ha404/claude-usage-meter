@@ -7,6 +7,10 @@ Each window (5-hour and weekly) is a bar filled to your utilization, with a vert
 marker showing how much of the window has elapsed — fill past the marker means
 you're burning faster than even pace.
 
+Bars turn **orange** at 50% or when usage is 10+ points ahead of the marker, and **red**
+at 80% or 25+ points ahead. At 100% the window shows as blocked (`!!` in the menu bar,
+`LIMIT` in the status line) with the time it comes back.
+
 ## Install
 
 ```sh

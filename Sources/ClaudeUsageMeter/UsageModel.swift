@@ -27,6 +27,21 @@ struct UsageWindow: Codable, Equatable {
         try c.encodeIfPresent(resetsAt.map { Int($0.timeIntervalSince1970) }, forKey: .resetsAt)
     }
 
+    /// How worried to be. Takes the worse of the absolute level and the pace: a window can
+    /// go orange or red early if usage is running well ahead of the elapsed-time marker.
+    func severity(windowLength: TimeInterval, now: Date = Date()) -> Severity {
+        if utilization >= 100 { return .exhausted }
+
+        let byLevel: Severity = utilization >= 80 ? .critical : utilization >= 50 ? .warning : .normal
+
+        var byPace = Severity.normal
+        if utilization >= 10, let elapsed = elapsedFraction(windowLength: windowLength, now: now) {
+            let ahead = utilization / 100 - elapsed
+            byPace = ahead > 0.25 ? .critical : ahead > 0.10 ? .warning : .normal
+        }
+        return max(byLevel, byPace)
+    }
+
     /// Fraction (0...1) of the window that has elapsed, given the window's total length.
     func elapsedFraction(windowLength: TimeInterval, now: Date = Date()) -> Double? {
         guard let resetsAt else { return nil }
@@ -43,6 +58,12 @@ struct Usage: Decodable, Equatable {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
     }
+}
+
+enum Severity: Int, Comparable {
+    case normal, warning, critical, exhausted
+
+    static func < (a: Severity, b: Severity) -> Bool { a.rawValue < b.rawValue }
 }
 
 enum WindowKind: CaseIterable {

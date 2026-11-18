@@ -18,17 +18,33 @@ window() {
   echo "$out"
 }
 
+# severity <pct> <elapsed-percent or empty> -> 0 normal, 1 warning, 2 critical, 3 exhausted.
+# Worse of the absolute level and the pace (how far usage runs ahead of elapsed time).
+severity() {
+  local p=$1 e=$2 lvl=0 ahead
+  [ "$p" -ge 100 ] && { echo 3; return; }
+  if   [ "$p" -ge 80 ]; then lvl=2
+  elif [ "$p" -ge 50 ]; then lvl=1; fi
+  if [ -n "$e" ] && [ "$p" -ge 10 ]; then
+    ahead=$(( p - e ))
+    if   [ "$ahead" -gt 25 ] && [ "$lvl" -lt 2 ]; then lvl=2
+    elif [ "$ahead" -gt 10 ] && [ "$lvl" -lt 1 ]; then lvl=1; fi
+  fi
+  echo "$lvl"
+}
+
 color() {
-  local p=${1%.*}
-  if   [ "$p" -lt 50 ]; then printf '\033[32m'
-  elif [ "$p" -lt 80 ]; then printf '\033[33m'
-  else printf '\033[31m'; fi
+  case $1 in
+    0) printf '\033[32m' ;;
+    1) printf '\033[33m' ;;
+    *) printf '\033[31m' ;;
+  esac
 }
 
 # segment <label> <window-seconds> <pct> <resets_epoch>
 segment() {
   local label=$1 length=$2 pct=$3 resets=$4
-  local p=${pct%.*} cells=10 filled marker=-1 bar="" i
+  local p=${pct%.*} cells=10 filled marker=-1 elapsed="" bar="" i sev c
   filled=$(( (p * cells + 50) / 100 ))
   [ "$filled" -gt "$cells" ] && filled=$cells
 
@@ -36,15 +52,13 @@ segment() {
   if [ -n "$resets" ]; then
     local remaining=$(( resets - $(date +%s) ))
     [ "$remaining" -lt 0 ] && remaining=0
+    elapsed=$(( (length - remaining) * 100 / length ))
     marker=$(( (length - remaining) * cells / length ))
     [ "$marker" -ge "$cells" ] && marker=$(( cells - 1 ))
   fi
 
-  for (( i = 0; i < cells; i++ )); do
-    if   [ "$i" -eq "$marker" ]; then bar+=$'\033[1;37m│'"$(color "$p")"
-    elif [ "$i" -lt "$filled" ]; then bar+="▓"
-    else bar+="░"; fi
-  done
+  sev=$(severity "$p" "$elapsed")
+  c=$(color "$sev")
 
   local when=""
   if [ -n "$resets" ]; then
@@ -55,8 +69,19 @@ segment() {
     fi
   fi
 
+  if [ "$sev" -eq 3 ]; then
+    printf '\033[1;31m%s ██████████ LIMIT\033[0;31m%s\033[0m' "$label" "$when"
+    return
+  fi
+
+  for (( i = 0; i < cells; i++ )); do
+    if   [ "$i" -eq "$marker" ]; then bar+=$'\033[1;37m│'"$c"
+    elif [ "$i" -lt "$filled" ]; then bar+="▓"
+    else bar+="░"; fi
+  done
+
   printf '\033[90m%s\033[0m %s%s\033[0m %s%%\033[90m%s\033[0m' \
-    "$label" "$(color "$p")" "$bar" "$p" "$when"
+    "$label" "$c" "$bar" "$p" "$when"
 }
 
 parts=()

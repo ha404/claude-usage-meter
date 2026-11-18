@@ -9,11 +9,11 @@ enum BarRenderer {
     private static let rowHeight: CGFloat = 6
     private static let rowGap: CGFloat = 3
 
-    static func color(for utilization: Double) -> NSColor {
-        switch utilization {
-        case ..<50: .systemGreen
-        case ..<80: .systemOrange
-        default: .systemRed
+    static func color(for severity: Severity) -> NSColor {
+        switch severity {
+        case .normal: .systemGreen
+        case .warning: .systemOrange
+        case .critical, .exhausted: .systemRed
         }
     }
 
@@ -34,9 +34,16 @@ enum BarRenderer {
     private static func drawRow(kind: WindowKind, window: UsageWindow?, y: CGFloat, stale: Bool, now: Date) {
         let alpha: CGFloat = stale ? 0.45 : 1
         let fg = NSColor.labelColor.withAlphaComponent(alpha)
+        let severity = window?.severity(windowLength: kind.length, now: now) ?? .normal
+        let exhausted = severity == .exhausted
 
-        let font = NSFont.monospacedSystemFont(ofSize: 7, weight: .semibold)
-        let label = NSAttributedString(string: kind.label, attributes: [.font: font, .foregroundColor: fg])
+        // At the limit the label becomes a red "!!" so a blocked window stands out.
+        let font = NSFont.monospacedSystemFont(ofSize: 7, weight: exhausted ? .heavy : .semibold)
+        let labelColor = exhausted ? NSColor.systemRed.withAlphaComponent(alpha) : fg
+        let label = NSAttributedString(
+            string: exhausted ? "!!" : kind.label,
+            attributes: [.font: font, .foregroundColor: labelColor]
+        )
         let labelSize = label.size()
         label.draw(at: NSPoint(x: 0, y: y + (rowHeight - labelSize.height) / 2))
 
@@ -51,13 +58,13 @@ enum BarRenderer {
         if pct > 0 {
             NSGraphicsContext.saveGraphicsState()
             track.addClip()
-            color(for: window.utilization).withAlphaComponent(alpha).setFill()
+            color(for: severity).withAlphaComponent(alpha).setFill()
             NSRect(x: bar.minX, y: bar.minY, width: bar.width * pct, height: bar.height).fill()
             NSGraphicsContext.restoreGraphicsState()
         }
 
         // Elapsed-time marker: where "even pace" would put you right now.
-        if let elapsed = window.elapsedFraction(windowLength: kind.length, now: now) {
+        if !exhausted, let elapsed = window.elapsedFraction(windowLength: kind.length, now: now) {
             let x = (bar.minX + bar.width * elapsed).rounded() + 0.5
             let tick = NSBezierPath()
             tick.move(to: NSPoint(x: x, y: bar.minY - 1.5))
