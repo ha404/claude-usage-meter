@@ -36,6 +36,14 @@ final class UsageService {
     private var timer: Timer?
     static let pollInterval: TimeInterval = 60
 
+    init() {}
+
+    /// Seeds state without fetching; used to render the README screenshots.
+    init(preview usage: Usage) {
+        self.usage = usage
+        self.lastUpdated = Date()
+    }
+
     func start() {
         Task { await refresh() }
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
