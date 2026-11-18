@@ -4,36 +4,43 @@
 input=$(cat)
 CACHE="$HOME/.claude/usage-meter-cache.json"
 MAX_CACHE_AGE=600
+CELLS=10
 
-model=$(jq -r '.model.display_name // empty' <<<"$input")
+model=$(jq -r '.model.display_name // empty' <<<"$input" 2>/dev/null)
 
-# Emits "pct resets_epoch" for a window, or nothing.
+# jq filter turning a window object into "<tenths of a percent> <resets epoch or nothing>".
+# Emits nothing unless the percentage (field named by $pct) is a number, so a malformed
+# window is dropped rather than drawn.
+FORMAT='select(type == "object" and (.[$pct] | type) == "number")
+  | "\(.[$pct] * 10 | round) \(.resets_at | if type == "number" then floor else "" end)"'
+
 window() {
   local key=$1 out
-  out=$(jq -r --arg k "$key" '.rate_limits[$k] // empty | "\(.used_percentage) \(.resets_at // "")"' <<<"$input" 2>/dev/null)
+  out=$(jq -r --arg k "$key" --arg pct used_percentage \
+    ".rate_limits[\$k]? // empty | $FORMAT" <<<"$input" 2>/dev/null)
   if [ -z "$out" ] && [ -f "$CACHE" ]; then
-    out=$(jq -r --arg k "$key" --argjson max "$MAX_CACHE_AGE" '
-      select(now - .timestamp < $max) | .[$k] // empty | "\(.utilization) \(.resets_at // "")"' "$CACHE" 2>/dev/null)
+    out=$(jq -r --arg k "$key" --arg pct utilization --argjson max "$MAX_CACHE_AGE" \
+      "select(now - .timestamp < \$max) | .[\$k] // empty | $FORMAT" "$CACHE" 2>/dev/null)
   fi
   echo "$out"
 }
 
-# severity <pct> <elapsed-percent or empty> -> 0 normal, 1 warning, 2 critical, 3 exhausted.
-# The elapsed-time marker is "even pace", not a limit: past it is orange, and red only when
-# also at 85%+ of the real limit.
-# Falls back to absolute levels when there's no reset time.
+# severity <tenths of a percent used> <tenths of a percent elapsed, or empty>
+#   -> 0 normal, 1 warning, 2 critical, 3 exhausted.
+# Mirrors UsageWindow.severity in the app: the elapsed-time marker is "even pace", not a
+# limit, so past it is orange (once 10%+ is used) and red only when also at 85%+ of the
+# real limit. Falls back to absolute levels when there's no reset time.
 severity() {
   local p=$1 e=$2
-  [ "$p" -ge 100 ] && { echo 3; return; }
+  [ "$p" -ge 1000 ] && { echo 3; return; }
   if [ -z "$e" ]; then
-    if   [ "$p" -ge 80 ]; then echo 2
-    elif [ "$p" -ge 50 ]; then echo 1
-    else echo 0; fi
-    return
+    [ "$p" -ge 800 ] && { echo 2; return; }
+    [ "$p" -ge 500 ] && { echo 1; return; }
+    echo 0; return
   fi
-  if   [ "$p" -le "$e" ]; then echo 0
-  elif [ "$p" -ge 85 ];   then echo 2
-  else echo 1; fi
+  { [ "$p" -le "$e" ] || [ "$p" -lt 100 ]; } && { echo 0; return; }
+  [ "$p" -ge 850 ] && { echo 2; return; }
+  echo 1
 }
 
 color() {
@@ -44,23 +51,32 @@ color() {
   esac
 }
 
-# segment <label> <window-seconds> <pct> <resets_epoch>
+# segment <label> <window-seconds> <tenths of a percent used> <resets_epoch>
 segment() {
-  local label=$1 length=$2 pct=$3 resets=$4
-  local p=${pct%.*} cells=10 filled marker=-1 elapsed="" bar="" i sev c
-  # Round fill up so any usage past the marker shows a cell past it.
-  filled=$(( (p * cells + 99) / 100 ))
-  [ "$filled" -gt "$cells" ] && filled=$cells
+  local label=$1 length=$2 p10=$3 resets=$4
+  local pct filled marker=-1 e10="" bar="" i sev c
+  pct=$(( (p10 + 5) / 10 ))
+  filled=$(( (p10 * CELLS + 500) / 1000 ))
+  [ "$filled" -gt "$CELLS" ] && filled=$CELLS
 
   # Elapsed-time marker: drawn *between* cells at the boundary "even pace" has reached.
   if [ -n "$resets" ]; then
     local remaining=$(( resets - $(date +%s) ))
     [ "$remaining" -lt 0 ] && remaining=0
-    elapsed=$(( (length - remaining) * 100 / length ))
-    marker=$(( ((length - remaining) * cells + length / 2) / length ))
+    [ "$remaining" -gt "$length" ] && remaining=$length
+    e10=$(( (length - remaining) * 1000 / length ))
+    marker=$(( (e10 * CELLS + 500) / 1000 ))
+    # Ten cells can't show both values exactly, so keep the picture truthful about the
+    # one thing it's for: fill reaches past the marker exactly when usage is ahead of pace.
+    if [ "$p10" -gt "$e10" ]; then
+      [ "$marker" -ge "$CELLS" ] && marker=$(( CELLS - 1 ))
+      [ "$filled" -le "$marker" ] && filled=$(( marker + 1 ))
+    elif [ "$filled" -gt "$marker" ]; then
+      filled=$marker
+    fi
   fi
 
-  sev=$(severity "$p" "$elapsed")
+  sev=$(severity "$p10" "$e10")
   c=$(color "$sev")
 
   local when=""
@@ -77,14 +93,15 @@ segment() {
     return
   fi
 
-  for (( i = 0; i <= cells; i++ )); do
-    [ "$i" -eq "$marker" ] && bar+=$'\033[1;37m│'"$c"
-    [ "$i" -eq "$cells" ] && break
+  for (( i = 0; i <= CELLS; i++ )); do
+    # Reset after the bold marker so the cells to its right aren't bold too.
+    [ "$i" -eq "$marker" ] && bar+=$'\033[1;37m│\033[0m'"$c"
+    [ "$i" -eq "$CELLS" ] && break
     if [ "$i" -lt "$filled" ]; then bar+="▓"; else bar+="░"; fi
   done
 
   printf '\033[90m%s\033[0m %s%s\033[0m %s%%\033[90m%s\033[0m' \
-    "$label" "$c" "$bar" "$p" "$when"
+    "$label" "$c" "$bar" "$pct" "$when"
 }
 
 parts=()

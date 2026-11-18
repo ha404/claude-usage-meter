@@ -1,9 +1,15 @@
 import Foundation
 
 /// One rate-limit window (5-hour session or 7-day weekly).
-struct UsageWindow: Codable, Equatable {
-    var utilization: Double
-    var resetsAt: Date?
+struct UsageWindow: Decodable, Equatable {
+    /// Below this utilization a window is never flagged for pace: a brand-new window is
+    /// always "ahead" of a marker that starts at zero, and that isn't worth a warning.
+    static let paceFloor: Double = 10
+    /// Past the marker *and* at or above this utilization is critical.
+    static let criticalLevel: Double = 85
+
+    let utilization: Double
+    let resetsAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case utilization
@@ -17,28 +23,27 @@ struct UsageWindow: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        utilization = try c.decodeIfPresent(Double.self, forKey: .utilization) ?? 0
+        // Required: a response without it is a schema change, not "0% used".
+        utilization = try c.decode(Double.self, forKey: .utilization)
         resetsAt = (try c.decodeIfPresent(String.self, forKey: .resetsAt)).flatMap(parseISO8601)
     }
 
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(utilization, forKey: .utilization)
-        try c.encodeIfPresent(resetsAt.map { Int($0.timeIntervalSince1970) }, forKey: .resetsAt)
-    }
+    /// Utilization as the whole percentage shown to the user.
+    var percent: Int { Int(utilization.rounded()) }
 
     /// How worried to be. The elapsed-time marker is only "even pace", not a limit, so
-    /// passing it is an early heads-up (orange). Red is reserved for being past the marker
-    /// *and* near the real limit (85%+ of the bar). Falls back to absolute levels when
-    /// there's no reset time.
+    /// passing it is an early heads-up (orange) once usage is past `paceFloor`. Red is
+    /// reserved for being past the marker *and* near the real limit. Falls back to
+    /// absolute levels when there's no reset time.
     func severity(windowLength: TimeInterval, now: Date = Date()) -> Severity {
         if utilization >= 100 { return .exhausted }
 
         guard let elapsed = elapsedFraction(windowLength: windowLength, now: now) else {
-            return utilization >= 80 ? .critical : utilization >= 50 ? .warning : .normal
+            if utilization >= 80 { return .critical }
+            return utilization >= 50 ? .warning : .normal
         }
-        guard utilization > elapsed * 100 else { return .normal }
-        return utilization >= 85 ? .critical : .warning
+        guard utilization > elapsed * 100, utilization >= Self.paceFloor else { return .normal }
+        return utilization >= Self.criticalLevel ? .critical : .warning
     }
 
     /// Fraction (0...1) of the window that has elapsed, given the window's total length.
@@ -50,8 +55,8 @@ struct UsageWindow: Codable, Equatable {
 }
 
 struct Usage: Decodable, Equatable {
-    var fiveHour: UsageWindow?
-    var sevenDay: UsageWindow?
+    let fiveHour: UsageWindow?
+    let sevenDay: UsageWindow?
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"

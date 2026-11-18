@@ -70,7 +70,7 @@ let popoverFramed = MainActor.assumeIsolated { () -> NSBitmapImageRep in
 let popoverService = UsageService(preview: Usage(
     fiveHour: window(48, elapsed: 0.3, .fiveHour),
     sevenDay: window(36, elapsed: 0.5, .sevenDay)))
-let host = NSHostingView(rootView: PopoverView(service: popoverService))
+let host = NSHostingView(rootView: PopoverView(service: popoverService, updater: Updater(currentVersion: AppVersion("1.0.8"))))
 host.appearance = dark
 host.frame.size = host.fittingSize
 let popoverWindow = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)

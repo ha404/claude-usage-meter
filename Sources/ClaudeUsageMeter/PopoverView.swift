@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PopoverView: View {
     let service: UsageService
+    let updater: Updater
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -36,9 +37,30 @@ struct PopoverView: View {
                     .disabled(service.isLoading)
                 }
 
-                // Bindable(...) instead of @State/@Bindable: the Command Line Tools ship without SwiftUI's macro plugins.
-                Toggle("Launch at login", isOn: Bindable(service).launchAtLogin)
+                Toggle("Launch at login", isOn: Binding(
+                    get: { service.launchAtLogin },
+                    set: { service.setLaunchAtLogin($0) }))
                     .toggleStyle(.checkbox)
+
+                Toggle("Update automatically", isOn: Binding(
+                    get: { updater.automatic },
+                    set: { updater.setAutomatic($0) }))
+                    .toggleStyle(.checkbox)
+                    .disabled(updater.currentVersion == nil)
+
+                HStack {
+                    Text(updater.statusText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer()
+                    Button(updateActionTitle) {
+                        Task { await updater.check(install: updateActionInstalls) }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .disabled(updater.currentVersion == nil || updater.isBusy)
+                }
 
                 Button("Quit") { NSApp.terminate(nil) }
                     .buttonStyle(.borderless)
@@ -46,6 +68,17 @@ struct PopoverView: View {
             .padding(16)
             .frame(width: 280)
         }
+    }
+
+    /// With automatic updates off, the first press only finds the update; the second installs it.
+    private var updateActionInstalls: Bool {
+        if case .available = updater.status { return true }
+        return updater.automatic
+    }
+
+    private var updateActionTitle: String {
+        if case .available = updater.status { return "Install" }
+        return "Check now"
     }
 }
 
@@ -59,7 +92,7 @@ private struct WindowRow: View {
             HStack {
                 Text(kind.title).font(.subheadline.weight(.medium))
                 Spacer()
-                Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
+                Text(window.map { "\($0.percent)%" } ?? "—")
                     .font(.subheadline.monospacedDigit().weight(.semibold))
             }
 
@@ -70,11 +103,13 @@ private struct WindowRow: View {
                     Capsule()
                         .fill(Color(nsColor: BarRenderer.color(for: severity)))
                         .frame(width: geo.size.width * pct)
-                    if let elapsed = window?.elapsedFraction(windowLength: kind.length, now: now) {
+                    // No pace to judge once the window is blocked (matches the menu bar).
+                    if severity != .exhausted,
+                       let elapsed = window?.elapsedFraction(windowLength: kind.length, now: now) {
                         Rectangle()
                             .fill(.primary)
                             .frame(width: 2, height: geo.size.height + 6)
-                            .offset(x: geo.size.width * elapsed - 1)
+                            .offset(x: min(max(geo.size.width * elapsed - 1, 0), geo.size.width - 2))
                     }
                 }
             }
@@ -126,6 +161,6 @@ private struct WindowRow: View {
         let d = secs / 86400, h = (secs % 86400) / 3600, m = (secs % 3600) / 60
         if d > 0 { return "\(d)d \(h)h" }
         if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
+        return m > 0 ? "\(m)m" : "under 1m"
     }
 }

@@ -1,0 +1,39 @@
+name: Release
+
+# Every push to main becomes a release: v1.0.<commit count>, with the app zipped as an
+# asset. Installed copies of the app find it through the releases API and update themselves.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the version is the commit count
+
+      - name: Test
+        run: swift test
+
+      - name: Build
+        run: |
+          VERSION="1.0.$(git rev-list --count HEAD)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          VERSION="$VERSION" SWIFT_BUILD_FLAGS="--arch arm64 --arch x86_64" ./scripts/build-app.sh --no-install
+          ditto -c -k --keepParent build/ClaudeUsageMeter.app build/ClaudeUsageMeter.zip
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" build/ClaudeUsageMeter.zip \
+            --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes

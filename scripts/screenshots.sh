@@ -3,7 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BIN=$(mktemp -d)/render
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+BIN=$WORK/render
 swiftc -o "$BIN" $(ls Sources/ClaudeUsageMeter/*.swift | grep -v App.swift) scripts/screenshots/main.swift
 
 # Sample status lines, produced by the real status line script.

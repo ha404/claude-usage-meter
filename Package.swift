@@ -5,6 +5,11 @@ let package = Package(
     name: "ClaudeUsageMeter",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "ClaudeUsageMeter", path: "Sources/ClaudeUsageMeter")
+        .executableTarget(name: "ClaudeUsageMeter", path: "Sources/ClaudeUsageMeter"),
+        .testTarget(
+            name: "ClaudeUsageMeterTests",
+            dependencies: ["ClaudeUsageMeter"],
+            path: "Tests/ClaudeUsageMeterTests"
+        ),
     ]
 )

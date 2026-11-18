@@ -4,6 +4,7 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let service = UsageService()
+    private let updater = Updater()
     private var controller: StatusItemController?
 
     static func main() {
@@ -15,15 +16,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        controller = StatusItemController(service: service)
+        controller = StatusItemController(service: service, updater: updater)
         service.start()
+        updater.start()
         registerLoginItemOnFirstLaunch()
     }
 
+    /// Tries once per install to register at login; a failed attempt is retried next launch.
     private func registerLoginItemOnFirstLaunch() {
         let key = "didRegisterLoginItem"
         guard !UserDefaults.standard.bool(forKey: key), Bundle.main.bundleIdentifier != nil else { return }
-        service.launchAtLogin = true
+        guard service.setLaunchAtLogin(true) else { return }
         UserDefaults.standard.set(true, forKey: key)
     }
 }

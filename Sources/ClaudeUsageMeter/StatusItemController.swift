@@ -9,12 +9,12 @@ final class StatusItemController: NSObject {
     private let popover = NSPopover()
     private var redrawTimer: Timer?
 
-    init(service: UsageService) {
+    init(service: UsageService, updater: Updater) {
         self.service = service
         super.init()
 
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PopoverView(service: service))
+        popover.contentViewController = NSHostingController(rootView: PopoverView(service: service, updater: updater))
 
         if let button = statusItem.button {
             button.target = self
@@ -50,18 +50,17 @@ final class StatusItemController: NSObject {
     private func tooltip() -> String {
         guard let usage = service.usage else { return service.error ?? "Loading Claude usage…" }
         return WindowKind.allCases.compactMap { kind in
-            usage.window(kind).map { "\(kind.label): \(Int($0.utilization.rounded()))%" }
+            usage.window(kind).map { "\(kind.label): \($0.percent)%" }
         }.joined(separator: "  ·  ")
     }
 
     @objc private func togglePopover() {
         guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(nil)
-        } else {
-            Task { await service.refresh() }
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
-        }
+        guard !popover.isShown else { return popover.performClose(nil) }
+        Task { await service.refresh() }
+        // A transient popover only closes on outside clicks while its app is active.
+        NSApp.activate()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
     }
 }

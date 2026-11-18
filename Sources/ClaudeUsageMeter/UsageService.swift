@@ -2,16 +2,17 @@ import Foundation
 import Observation
 import ServiceManagement
 
-enum UsageError: LocalizedError {
+enum UsageError: LocalizedError, Equatable {
     case noCredentials
     case tokenExpired
-    case http(Int)
+    case http(Int, retryAfter: TimeInterval?)
 
     var errorDescription: String? {
         switch self {
         case .noCredentials: "No Claude Code login found in Keychain"
         case .tokenExpired: "Claude Code token expired — run claude to refresh"
-        case .http(let code): "Usage request failed (HTTP \(code))"
+        case .http(429, _): "Usage endpoint is rate limiting — backing off"
+        case .http(let code, _): "Usage request failed (HTTP \(code))"
         }
     }
 }
@@ -23,18 +24,20 @@ final class UsageService {
     private(set) var lastUpdated: Date?
     private(set) var error: String?
     private(set) var isLoading = false
-
-    var launchAtLogin = SMAppService.mainApp.status == .enabled {
-        didSet {
-            guard launchAtLogin != oldValue else { return }
-            try? launchAtLogin ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
-        }
-    }
+    private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var isStale: Bool { error != nil && usage != nil }
 
-    private var timer: Timer?
-    static let pollInterval: TimeInterval = 60
+    nonisolated static let pollInterval: TimeInterval = 60
+    nonisolated static let maxBackoff: TimeInterval = 900
+    nonisolated static let maxRetryAfter: TimeInterval = 3600
+    /// Opening the popover refreshes, but never more often than this.
+    nonisolated static let manualRefreshInterval: TimeInterval = 10
+
+    private var failures = 0
+    private var lastAttempt = Date.distantPast
+    private var backoffUntil = Date.distantPast
+    private var pollTask: Task<Void, Never>?
 
     init() {}
 
@@ -45,31 +48,74 @@ final class UsageService {
     }
 
     func start() {
-        Task { await refresh() }
-        timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
-            Task { await self?.refresh() }
+        guard pollTask == nil else { return }
+        pollTask = Task {
+            while !Task.isCancelled {
+                let wait = backoffUntil.timeIntervalSinceNow
+                if wait > 0 {
+                    try? await Task.sleep(for: .seconds(wait))
+                    continue
+                }
+                await poll()
+                try? await Task.sleep(for: .seconds(Self.pollInterval))
+            }
         }
     }
 
+    /// A user-initiated refresh. Ignored while backing off or right after another attempt.
     func refresh() async {
+        let earliest = max(backoffUntil, lastAttempt.addingTimeInterval(Self.manualRefreshInterval))
+        guard Date() >= earliest else { return }
+        await poll()
+    }
+
+    /// Registers or unregisters the login item. Returns whether the change took effect;
+    /// `launchAtLogin` always reflects what the system actually has.
+    @discardableResult
+    func setLaunchAtLogin(_ enabled: Bool) -> Bool {
+        try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+        launchAtLogin = SMAppService.mainApp.status == .enabled
+        return launchAtLogin == enabled
+    }
+
+    private func poll() async {
         guard !isLoading else { return }
         isLoading = true
+        lastAttempt = Date()
         defer { isLoading = false }
         do {
             let fresh = try await Self.fetch()
             usage = fresh
             lastUpdated = Date()
             error = nil
+            failures = 0
+            backoffUntil = .distantPast
             CacheWriter.write(fresh)
         } catch {
+            failures += 1
+            backoffUntil = Date().addingTimeInterval(Self.retryDelay(after: error, failures: failures))
             self.error = error.localizedDescription
+        }
+    }
+
+    /// How long to wait before trying again. Credential problems are local and cheap to
+    /// re-check, so they keep the normal cadence; anything that reached (or failed to
+    /// reach) the server backs off exponentially, honouring `Retry-After` when given.
+    nonisolated static func retryDelay(after error: Error, failures: Int) -> TimeInterval {
+        switch error {
+        case UsageError.noCredentials, UsageError.tokenExpired:
+            return pollInterval
+        case UsageError.http(_, let retryAfter?):
+            return min(max(retryAfter, pollInterval), maxRetryAfter)
+        default:
+            return min(pollInterval * pow(2, Double(min(max(failures, 0), 10))), maxBackoff)
         }
     }
 
     // MARK: - Networking
 
     private nonisolated static func fetch() async throws -> Usage {
-        let token = try readAccessToken()
+        let token = try await readAccessToken()
         var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
@@ -78,31 +124,28 @@ final class UsageService {
         req.timeoutInterval = 20
 
         let (data, response) = try await URLSession.shared.data(for: req)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let http = response as? HTTPURLResponse
+        let status = http?.statusCode ?? 0
         if status == 401 { throw UsageError.tokenExpired }
-        guard status == 200 else { throw UsageError.http(status) }
+        guard status == 200 else {
+            let retryAfter = http?.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
+            throw UsageError.http(status, retryAfter: retryAfter)
+        }
         return try JSONDecoder().decode(Usage.self, from: data)
     }
 
     /// Reads Claude Code's OAuth token via the `security` CLI. We never refresh the token
     /// ourselves: refreshing rotates it and would sign Claude Code out.
-    private nonisolated static func readAccessToken() throws -> String {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        p.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        try p.run()
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else { throw UsageError.noCredentials }
+    private nonisolated static func readAccessToken() async throws -> String {
+        let result = try await Shell.run(
+            "/usr/bin/security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+        guard result.status == 0 else { throw UsageError.noCredentials }
 
         struct Creds: Decodable {
             struct OAuth: Decodable { let accessToken: String; let expiresAt: Double? }
             let claudeAiOauth: OAuth
         }
-        guard let creds = try? JSONDecoder().decode(Creds.self, from: data) else {
+        guard let creds = try? JSONDecoder().decode(Creds.self, from: result.output) else {
             throw UsageError.noCredentials
         }
         if let exp = creds.claudeAiOauth.expiresAt, exp / 1000 < Date().timeIntervalSince1970 {
