@@ -19,18 +19,21 @@ window() {
 }
 
 # severity <pct> <elapsed-percent or empty> -> 0 normal, 1 warning, 2 critical, 3 exhausted.
-# Worse of the absolute level and the pace (how far usage runs ahead of elapsed time).
+# Judged against the elapsed-time marker: orange once usage passes it, red at 15+ points past.
+# Falls back to absolute levels when there's no reset time.
 severity() {
-  local p=$1 e=$2 lvl=0 ahead
+  local p=$1 e=$2 ahead
   [ "$p" -ge 100 ] && { echo 3; return; }
-  if   [ "$p" -ge 80 ]; then lvl=2
-  elif [ "$p" -ge 50 ]; then lvl=1; fi
-  if [ -n "$e" ] && [ "$p" -ge 10 ]; then
-    ahead=$(( p - e ))
-    if   [ "$ahead" -gt 25 ] && [ "$lvl" -lt 2 ]; then lvl=2
-    elif [ "$ahead" -gt 10 ] && [ "$lvl" -lt 1 ]; then lvl=1; fi
+  if [ -z "$e" ]; then
+    if   [ "$p" -ge 80 ]; then echo 2
+    elif [ "$p" -ge 50 ]; then echo 1
+    else echo 0; fi
+    return
   fi
-  echo "$lvl"
+  ahead=$(( p - e ))
+  if   [ "$ahead" -ge 15 ]; then echo 2
+  elif [ "$ahead" -gt 0 ];  then echo 1
+  else echo 0; fi
 }
 
 color() {
@@ -45,16 +48,16 @@ color() {
 segment() {
   local label=$1 length=$2 pct=$3 resets=$4
   local p=${pct%.*} cells=10 filled marker=-1 elapsed="" bar="" i sev c
-  filled=$(( (p * cells + 50) / 100 ))
+  # Round fill up so any usage past the marker shows a cell past it.
+  filled=$(( (p * cells + 99) / 100 ))
   [ "$filled" -gt "$cells" ] && filled=$cells
 
-  # Elapsed-time marker: which cell "even pace" would reach by now.
+  # Elapsed-time marker: drawn *between* cells at the boundary "even pace" has reached.
   if [ -n "$resets" ]; then
     local remaining=$(( resets - $(date +%s) ))
     [ "$remaining" -lt 0 ] && remaining=0
     elapsed=$(( (length - remaining) * 100 / length ))
-    marker=$(( (length - remaining) * cells / length ))
-    [ "$marker" -ge "$cells" ] && marker=$(( cells - 1 ))
+    marker=$(( ((length - remaining) * cells + length / 2) / length ))
   fi
 
   sev=$(severity "$p" "$elapsed")
@@ -70,14 +73,14 @@ segment() {
   fi
 
   if [ "$sev" -eq 3 ]; then
-    printf '\033[1;31m%s ██████████ LIMIT\033[0;31m%s\033[0m' "$label" "$when"
+    printf '\033[1;31m%s ███████████ LIMIT\033[0;31m%s\033[0m' "$label" "$when"
     return
   fi
 
-  for (( i = 0; i < cells; i++ )); do
-    if   [ "$i" -eq "$marker" ]; then bar+=$'\033[1;37m│'"$c"
-    elif [ "$i" -lt "$filled" ]; then bar+="▓"
-    else bar+="░"; fi
+  for (( i = 0; i <= cells; i++ )); do
+    [ "$i" -eq "$marker" ] && bar+=$'\033[1;37m│'"$c"
+    [ "$i" -eq "$cells" ] && break
+    if [ "$i" -lt "$filled" ]; then bar+="▓"; else bar+="░"; fi
   done
 
   printf '\033[90m%s\033[0m %s%s\033[0m %s%%\033[90m%s\033[0m' \

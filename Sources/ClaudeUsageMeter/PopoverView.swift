@@ -104,12 +104,12 @@ private struct WindowRow: View {
         window?.severity(windowLength: kind.length, now: now) ?? .normal
     }
 
-    /// Explains a warning color that comes from pace rather than the raw percentage.
+    /// Explains an orange/red bar: how far usage is past the elapsed-time marker.
     private var paceNote: String? {
         guard let window, let elapsed = window.elapsedFraction(windowLength: kind.length, now: now),
               severity > .normal else { return nil }
-        let ahead = Int((window.utilization - elapsed * 100).rounded())
-        return ahead > 10 ? "\(ahead) pts ahead of pace" : nil
+        let ahead = max(Int((window.utilization - elapsed * 100).rounded()), 1)
+        return "\(ahead) pts ahead of pace"
     }
 
     private var resetFormat: Date.FormatStyle {
