@@ -104,12 +104,14 @@ private struct WindowRow: View {
         window?.severity(windowLength: kind.length, now: now) ?? .normal
     }
 
-    /// Explains an orange/red bar: how far usage is past the elapsed-time marker.
+    /// Explains an orange/red bar relative to the elapsed-time marker.
     private var paceNote: String? {
         guard let window, let elapsed = window.elapsedFraction(windowLength: kind.length, now: now),
               severity > .normal else { return nil }
-        let ahead = max(Int((window.utilization - elapsed * 100).rounded()), 1)
-        return "\(ahead) pts ahead of pace"
+        let diff = Int((window.utilization - elapsed * 100).rounded())
+        return severity == .critical
+            ? "\(max(diff, 1)) pts ahead of pace"
+            : "Approaching pace (\(max(-diff, 0)) pts of headroom)"
     }
 
     private var resetFormat: Date.FormatStyle {

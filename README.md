@@ -7,8 +7,8 @@ Each window (5-hour and weekly) is a bar filled to your utilization, with a vert
 marker showing how much of the window has elapsed — fill past the marker means
 you're burning faster than even pace.
 
-Colors are judged against the marker, not the full bar: **green** at or behind it,
-**orange** once usage passes it, **red** at 15+ points past it. At 100% the window shows as blocked (`!!` in the menu bar,
+Colors are judged against the marker, not the full bar: **green** below 85% of it,
+**orange** from 85% of the marker up to it, **red** once usage passes it. At 100% the window shows as blocked (`!!` in the menu bar,
 `LIMIT` in the status line) with the time it comes back.
 
 ## Install

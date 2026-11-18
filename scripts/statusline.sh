@@ -19,10 +19,10 @@ window() {
 }
 
 # severity <pct> <elapsed-percent or empty> -> 0 normal, 1 warning, 2 critical, 3 exhausted.
-# Judged against the elapsed-time marker: orange once usage passes it, red at 15+ points past.
+# Judged against the elapsed-time marker: orange at 85% of it, red once usage passes it.
 # Falls back to absolute levels when there's no reset time.
 severity() {
-  local p=$1 e=$2 ahead
+  local p=$1 e=$2
   [ "$p" -ge 100 ] && { echo 3; return; }
   if [ -z "$e" ]; then
     if   [ "$p" -ge 80 ]; then echo 2
@@ -30,9 +30,8 @@ severity() {
     else echo 0; fi
     return
   fi
-  ahead=$(( p - e ))
-  if   [ "$ahead" -ge 15 ]; then echo 2
-  elif [ "$ahead" -gt 0 ];  then echo 1
+  if   [ "$p" -gt "$e" ]; then echo 2
+  elif [ "$p" -gt 0 ] && [ $(( p * 100 )) -ge $(( e * 85 )) ]; then echo 1
   else echo 0; fi
 }
 
