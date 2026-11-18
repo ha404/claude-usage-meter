@@ -52,8 +52,11 @@ echo "Built $APP ($VERSION)"
 [ "$INSTALL" -eq 1 ] || exit 0
 
 pkill -x "$APP_NAME" 2>/dev/null || true
+# Let the old copy finish quitting: LaunchServices won't open an app that is still
+# on its way out (error -600).
+while pgrep -x "$APP_NAME" >/dev/null; do sleep 0.1; done
 mkdir -p "$HOME/Applications"
 rm -rf "$DEST"
 cp -R "$APP" "$DEST"
-open "$DEST"
+open "$DEST" || { sleep 1; open "$DEST"; }
 echo "Installed and launched $DEST"
