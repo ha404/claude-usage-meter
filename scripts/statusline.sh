@@ -66,9 +66,9 @@ segment() {
   local when=""
   if [ -n "$resets" ]; then
     if [ "$length" -le 18000 ]; then
-      when=" ↻$(date -r "$resets" '+%-I:%M%p')"
+      when=" 🔄 $(date -r "$resets" '+%-I:%M%p')"
     else
-      when=" ↻$(date -r "$resets" '+%a %-I%p')"
+      when=" 🔄 $(date -r "$resets" '+%a %-I%p')"
     fi
   fi
 
