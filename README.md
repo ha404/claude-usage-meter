@@ -7,8 +7,9 @@ Each window (5-hour and weekly) is a bar filled to your utilization, with a vert
 marker showing how much of the window has elapsed — fill past the marker means
 you're burning faster than even pace.
 
-Colors are judged against the marker, not the full bar: **green** below 85% of it,
-**orange** from 85% of the marker up to it, **red** once usage passes it. At 100% the window shows as blocked (`!!` in the menu bar,
+The marker is only a pace guide — you can keep using Claude past it; the real limit is
+the end of the bar. So bars are **green** at or behind the marker, **orange** once past
+it (on track to run out before reset), and **red** when past it *and* at 85%+ of the bar. At 100% the window shows as blocked (`!!` in the menu bar,
 `LIMIT` in the status line) with the time it comes back.
 
 ## Install

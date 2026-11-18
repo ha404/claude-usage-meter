@@ -108,10 +108,11 @@ private struct WindowRow: View {
     private var paceNote: String? {
         guard let window, let elapsed = window.elapsedFraction(windowLength: kind.length, now: now),
               severity > .normal else { return nil }
-        let diff = Int((window.utilization - elapsed * 100).rounded())
+        let ahead = max(Int((window.utilization - elapsed * 100).rounded()), 1)
+        let left = max(Int((100 - window.utilization).rounded()), 0)
         return severity == .critical
-            ? "\(max(diff, 1)) pts ahead of pace"
-            : "Approaching pace (\(max(-diff, 0)) pts of headroom)"
+            ? "\(ahead) pts ahead of pace · only \(left)% left"
+            : "\(ahead) pts ahead of pace"
     }
 
     private var resetFormat: Date.FormatStyle {
