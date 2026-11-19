@@ -99,10 +99,15 @@ private struct WindowRow: View {
             GeometryReader { geo in
                 let pct = min(max((window?.utilization ?? 0) / 100, 0), 1)
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
-                    Capsule()
-                        .fill(Color(nsColor: BarRenderer.color(for: severity)))
-                        .frame(width: geo.size.width * pct)
+                    // Square-ended fill clipped to the rounded track (same as the menu bar icon),
+                    // so a tiny percentage doesn't collapse into a squarish pill.
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(.quaternary)
+                        Rectangle()
+                            .fill(Color(nsColor: BarRenderer.color(for: severity)))
+                            .frame(width: geo.size.width * pct)
+                    }
+                    .clipShape(Capsule())
                     // No pace to judge once the window is blocked (matches the menu bar).
                     if severity != .exhausted,
                        let elapsed = window?.elapsedFraction(windowLength: kind.length, now: now) {
