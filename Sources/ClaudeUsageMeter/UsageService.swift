@@ -33,6 +33,9 @@ final class UsageService {
     nonisolated static let maxRetryAfter: TimeInterval = 3600
     /// Opening the popover refreshes, but never more often than this.
     nonisolated static let manualRefreshInterval: TimeInterval = 10
+    /// Switching apps refreshes too (so the numbers are current when you come back to
+    /// the terminal), at most this often.
+    nonisolated static let focusRefreshInterval: TimeInterval = 20
 
     private var failures = 0
     private var lastAttempt = Date.distantPast
@@ -51,20 +54,23 @@ final class UsageService {
         guard pollTask == nil else { return }
         pollTask = Task {
             while !Task.isCancelled {
-                let wait = backoffUntil.timeIntervalSinceNow
+                // Timed from the last attempt of any kind, so a refresh triggered by the
+                // user stands in for the next scheduled poll rather than adding to it.
+                let due = max(backoffUntil, lastAttempt.addingTimeInterval(Self.pollInterval))
+                let wait = due.timeIntervalSinceNow
                 if wait > 0 {
                     try? await Task.sleep(for: .seconds(wait))
                     continue
                 }
                 await poll()
-                try? await Task.sleep(for: .seconds(Self.pollInterval))
             }
         }
     }
 
-    /// A user-initiated refresh. Ignored while backing off or right after another attempt.
-    func refresh() async {
-        let earliest = max(backoffUntil, lastAttempt.addingTimeInterval(Self.manualRefreshInterval))
+    /// A refresh prompted by the user. Ignored while backing off, or when the last attempt
+    /// was less than `interval` ago.
+    func refresh(ifOlderThan interval: TimeInterval = manualRefreshInterval) async {
+        let earliest = max(backoffUntil, lastAttempt.addingTimeInterval(interval))
         guard Date() >= earliest else { return }
         await poll()
     }

@@ -1,9 +1,12 @@
 #!/bin/bash
 # Claude Code status line: model │ 5h usage bar │ 7d usage bar.
-# Reads rate limits from Claude Code's stdin JSON; falls back to the menu bar app's cache.
+# Reads rate limits from Claude Code's stdin JSON and from the menu bar app's cache, and
+# shows whichever reading is newer.
 input=$(cat)
 CACHE="$HOME/.claude/usage-meter-cache.json"
 MAX_CACHE_AGE=600
+# Reset times this close together (seconds) are the same window.
+SAME_WINDOW=60
 CELLS=10
 
 model=$(jq -r '.model.display_name // empty' <<<"$input" 2>/dev/null)
@@ -14,15 +17,36 @@ model=$(jq -r '.model.display_name // empty' <<<"$input" 2>/dev/null)
 FORMAT='select(type == "object" and (.[$pct] | type) == "number")
   | "\(.[$pct] * 10 | round) \(.resets_at | if type == "number" then floor else "" end)"'
 
+# newer <reading> <reading> -> the more recent of two "<tenths> <resets>" readings.
+# Neither source says when it was measured, but usage only grows within a window, so:
+# a later reset time means a newer window, and within one window the higher usage is
+# the later measurement.
+newer() {
+  local a=$1 b=$2 pa ra pb rb
+  [ -z "$a" ] && { echo "$b"; return; }
+  [ -z "$b" ] && { echo "$a"; return; }
+  read -r pa ra <<<"$a"
+  read -r pb rb <<<"$b"
+  if [ -n "$ra" ] && [ -n "$rb" ]; then
+    [ $(( ra - rb )) -gt "$SAME_WINDOW" ] && { echo "$a"; return; }
+    [ $(( rb - ra )) -gt "$SAME_WINDOW" ] && { echo "$b"; return; }
+  fi
+  [ "$pb" -gt "$pa" ] && { echo "$b"; return; }
+  echo "$a"
+}
+
+# Claude Code's numbers come from this session's last API response, so they go stale
+# while the session idles or you use Claude elsewhere; the app's cache is account-wide
+# and at most a minute old while the app runs.
 window() {
-  local key=$1 out
-  out=$(jq -r --arg k "$key" --arg pct used_percentage \
+  local key=$1 session cached=""
+  session=$(jq -r --arg k "$key" --arg pct used_percentage \
     ".rate_limits[\$k]? // empty | $FORMAT" <<<"$input" 2>/dev/null)
-  if [ -z "$out" ] && [ -f "$CACHE" ]; then
-    out=$(jq -r --arg k "$key" --arg pct utilization --argjson max "$MAX_CACHE_AGE" \
+  if [ -f "$CACHE" ]; then
+    cached=$(jq -r --arg k "$key" --arg pct utilization --argjson max "$MAX_CACHE_AGE" \
       "select(now - .timestamp < \$max) | .[\$k] // empty | $FORMAT" "$CACHE" 2>/dev/null)
   fi
-  echo "$out"
+  newer "$session" "$cached"
 }
 
 # severity <tenths of a percent used> <tenths of a percent elapsed, or empty>

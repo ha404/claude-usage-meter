@@ -8,13 +8,21 @@ private let script = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     .appendingPathComponent("scripts/statusline.sh")
 
-private func statusLine(_ input: String) throws -> String {
+/// Runs the script on `input`. `cache` is the app's cache file as the script would find it.
+private func statusLine(_ input: String, cache: String? = nil) throws -> String {
+    let home = URL(fileURLWithPath: NSTemporaryDirectory() + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: home) }
+    if let cache {
+        let dir = home.appendingPathComponent(".claude")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(cache.utf8).write(to: dir.appendingPathComponent("usage-meter-cache.json"))
+    }
     let process = Process()
     let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
     process.executableURL = URL(fileURLWithPath: "/bin/bash")
     process.arguments = [script.path]
-    // An empty HOME keeps the app's real cache file out of the test.
-    process.environment = ["HOME": NSTemporaryDirectory() + UUID().uuidString, "PATH": "/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin"]
+    // A private HOME keeps the app's real cache file out of the test.
+    process.environment = ["HOME": home.path, "PATH": "/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin"]
     process.standardInput = stdin
     process.standardOutput = stdout
     process.standardError = stderr
@@ -70,4 +78,43 @@ func statusLineAgreesWithApp(_ index: Int) throws {
 
 @Test func statusLineRoundsPercentLikeTheApp() throws {
     #expect(try statusLine(input(used: 48.6, elapsed: nil)).contains("49%"))
+}
+
+// MARK: - Choosing between Claude Code's numbers and the app's cache
+
+private let epoch = Int(Date().timeIntervalSince1970)
+
+private func session(used: Double, resetsIn: Int) -> String {
+    "{\"rate_limits\":{\"five_hour\":{\"used_percentage\":\(used),\"resets_at\":\(epoch + resetsIn)}}}"
+}
+
+private func cache(used: Double, resetsIn: Int, age: Int = 5) -> String {
+    "{\"timestamp\":\(epoch - age),\"five_hour\":{\"utilization\":\(used),\"resets_at\":\(epoch + resetsIn)}}"
+}
+
+@Test func statusLinePrefersFresherCacheOverIdleSession() throws {
+    // The session last heard 20%; the app has since measured 55% in the same window.
+    let line = try statusLine(session(used: 20, resetsIn: 9000), cache: cache(used: 55, resetsIn: 9002))
+    #expect(line.contains("55%"))
+}
+
+@Test func statusLineKeepsSessionWhenCacheLags() throws {
+    // A response just landed (60%) and the app hasn't polled since (40%).
+    let line = try statusLine(session(used: 60, resetsIn: 9000), cache: cache(used: 40, resetsIn: 9000))
+    #expect(line.contains("60%"))
+}
+
+@Test func statusLinePrefersTheNewerWindow() throws {
+    // Lower usage, but from a window that resets later: the old one has rolled over.
+    let line = try statusLine(session(used: 90, resetsIn: 300), cache: cache(used: 3, resetsIn: 17000))
+    #expect(line.contains(" 3%"))
+}
+
+@Test func statusLineIgnoresAnOldCache() throws {
+    let line = try statusLine(session(used: 20, resetsIn: 9000), cache: cache(used: 55, resetsIn: 9000, age: 700))
+    #expect(line.contains("20%"))
+}
+
+@Test func statusLineFallsBackToCacheWithoutSessionLimits() throws {
+    #expect(try statusLine("{}", cache: cache(used: 55, resetsIn: 9000)).contains("55%"))
 }

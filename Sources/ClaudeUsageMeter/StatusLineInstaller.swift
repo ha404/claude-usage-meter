@@ -9,6 +9,11 @@ final class StatusLineInstaller {
     private(set) var isInstalled = false
     private(set) var isBusy = false
     private(set) var error: String?
+    /// Installed before the status line refreshed on a timer: settings.json has no
+    /// `refreshInterval`, so an idle session keeps showing old numbers. Running the
+    /// installer again adds it — offered in the panel rather than done unasked, since it
+    /// edits the user's Claude Code settings.
+    private(set) var needsIdleRefresh = false
 
     private static let home = FileManager.default.homeDirectoryForCurrentUser
     private static let target = home.appendingPathComponent(".claude/usage-meter-statusline.sh")
@@ -28,7 +33,9 @@ final class StatusLineInstaller {
     /// Re-reads settings.json, and keeps an installed script in step with this app version.
     func refresh() {
         // Match on the script name: older installs wrote the command without quotes.
-        isInstalled = Self.currentCommand()?.contains(Self.target.lastPathComponent) == true
+        let entry = Self.currentEntry()
+        isInstalled = (entry?["command"] as? String)?.contains(Self.target.lastPathComponent) == true
+        needsIdleRefresh = isInstalled && entry?["refreshInterval"] == nil
         if isInstalled { Self.syncScript() }
     }
 
@@ -43,11 +50,11 @@ final class StatusLineInstaller {
         refresh()
     }
 
-    private static func currentCommand() -> String? {
+    /// The `statusLine` entry of Claude Code's settings.json, if any.
+    private static func currentEntry() -> [String: Any]? {
         guard let data = try? Data(contentsOf: settings),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let statusLine = json["statusLine"] as? [String: Any] else { return nil }
-        return statusLine["command"] as? String
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json["statusLine"] as? [String: Any]
     }
 
     /// Copies the bundled status line script over the installed one when they differ, so

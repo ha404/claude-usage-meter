@@ -85,9 +85,15 @@ An app update also refreshes the installed status line script.
   It never refreshes the token (that would sign Claude Code out); if it's expired,
   values go dim until Claude Code refreshes it.
   Failed requests back off (up to 15 minutes, or whatever `Retry-After` says).
+  It also refreshes when you switch apps (at most every 20s), so the numbers are current
+  when you come back to the terminal.
 - After each fetch it writes `~/.claude/usage-meter-cache.json`.
-- The status line uses the `rate_limits` Claude Code passes on stdin, falling back to
-  that cache (if under 10 minutes old).
+- The status line reads both the `rate_limits` Claude Code passes on stdin and that cache
+  (if under 10 minutes old) and shows the newer reading. Claude Code's numbers only move
+  when that session gets an API response, so an idle session would otherwise show old ones.
+- The status line is installed with `refreshInterval: 10`, so Claude Code redraws it every
+  10 seconds even while a session is idle. If you set it up with an older version, click
+  **Keep status line fresh while idle** in the panel to add that to your settings.
 
 ## License
 

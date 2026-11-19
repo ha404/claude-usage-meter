@@ -77,17 +77,18 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var statusLineRow: some View {
-        if statusLine.isInstalled {
+        if statusLine.isInstalled && !statusLine.needsIdleRefresh {
             Label("Claude Code status line installed", systemImage: "checkmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
             VStack(alignment: .leading, spacing: 4) {
-                Button("Set up Claude Code status line") {
+                Button(statusLine.isInstalled ? "Keep status line fresh while idle" : "Set up Claude Code status line") {
                     Task { await statusLine.install() }
                 }
                 .buttonStyle(.borderless)
                 .disabled(statusLine.isBusy)
+                .help("Updates the statusLine entry in ~/.claude/settings.json")
                 if let error = statusLine.error {
                     Text(error).font(.caption).foregroundStyle(.orange)
                 }

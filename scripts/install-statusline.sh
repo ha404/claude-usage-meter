@@ -15,16 +15,34 @@ chmod +x "$TARGET"
 
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 
+# Claude Code only re-runs a status line on session events, so an idle session would
+# keep showing old numbers; refreshInterval (seconds) re-runs it on a timer as well.
+REFRESH_INTERVAL=10
+
 current=$(jq -r '.statusLine.command // empty' "$SETTINGS")
-if [ "$current" = "$COMMAND" ]; then
-  echo "Status line updated: $TARGET (settings.json already points at it)"
-  exit 0
-fi
-[ -n "$current" ] && echo "Replacing existing status line: $current"
 
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
-jq --arg cmd "$COMMAND" '.statusLine = {type: "command", command: $cmd, padding: 0}' "$SETTINGS" > "$tmp"
+# Settings from an earlier install of this status line (padding, a refresh interval the
+# user tuned) are kept; another tool's status line is replaced outright.
+jq --arg cmd "$COMMAND" --arg script "$(basename "$TARGET")" --argjson refresh "$REFRESH_INTERVAL" '
+  (if (.statusLine.command // "" | contains($script)) then .statusLine else {} end) as $ours
+  | .statusLine = {
+      type: "command",
+      command: $cmd,
+      padding: ($ours.padding // 0),
+      refreshInterval: ($ours.refreshInterval // $refresh)
+    }' "$SETTINGS" > "$tmp"
+
+if jq -e -n --slurpfile old "$SETTINGS" --slurpfile new "$tmp" '$old == $new' >/dev/null; then
+  echo "Status line updated: $TARGET (settings.json already points at it)"
+  exit 0
+fi
+case "$current" in
+  ""|*"$(basename "$TARGET")"*) ;;
+  *) echo "Replacing existing status line: $current" ;;
+esac
+
 cp "$SETTINGS" "$SETTINGS.bak"
 # Write through the existing file (not mv) so a symlinked settings.json and its
 # permissions survive.
