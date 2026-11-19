@@ -29,14 +29,20 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
 # The app installs (and keeps updated) the Claude Code status line from these copies.
 cp scripts/statusline.sh scripts/install-statusline.sh "$APP/Contents/Resources/"
+# Finder and Spotlight show this name instead of the bundle's file name (the plist names
+# must match the file name, or macOS treats the app as user-renamed). The bundle keeps
+# its space-free name, which the self-updater and Homebrew cask look for.
+mkdir -p "$APP/Contents/Resources/en.lproj"
+printf '"CFBundleDisplayName" = "Claude Usage Meter";\n"CFBundleName" = "Claude Usage Meter";\n' \
+  > "$APP/Contents/Resources/en.lproj/InfoPlist.strings"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Claude Usage Meter</string>
-  <key>CFBundleDisplayName</key><string>Claude Usage Meter</string>
+  <key>CFBundleName</key><string>$APP_NAME</string>
+  <key>CFBundleDisplayName</key><string>$APP_NAME</string>
   <key>CFBundleExecutable</key><string>$APP_NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -44,6 +50,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
+  <key>LSHasLocalizedDisplayName</key><true/>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
 </dict>
 </plist>
 PLIST
