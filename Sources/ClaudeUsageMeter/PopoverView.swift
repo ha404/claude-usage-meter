@@ -49,6 +49,18 @@ struct PopoverView: View {
                     .toggleStyle(.checkbox)
                     .disabled(updater.currentVersion == nil)
 
+                if statusLine.isAvailable {
+                    Toggle("Claude Code status line", isOn: Binding(
+                        get: { statusLine.isInstalled },
+                        set: { installed in Task { await statusLine.setInstalled(installed) } }))
+                        .toggleStyle(.checkbox)
+                        .disabled(statusLine.isBusy)
+                        .help("Shows usage in Claude Code, via the statusLine entry in ~/.claude/settings.json")
+                    if let error = statusLine.error {
+                        Text(error).font(.caption).foregroundStyle(.orange)
+                    }
+                }
+
                 HStack {
                     Text(updater.statusText)
                         .font(.caption)
@@ -63,36 +75,11 @@ struct PopoverView: View {
                     .disabled(updater.currentVersion == nil || updater.isBusy)
                 }
 
-                if statusLine.isAvailable {
-                    statusLineRow
-                }
-
                 Button("Quit") { NSApp.terminate(nil) }
                     .buttonStyle(.borderless)
             }
             .padding(16)
             .frame(width: 280)
-        }
-    }
-
-    @ViewBuilder
-    private var statusLineRow: some View {
-        if statusLine.isInstalled && !statusLine.needsIdleRefresh {
-            Label("Claude Code status line installed", systemImage: "checkmark.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                Button(statusLine.isInstalled ? "Keep status line fresh while idle" : "Set up Claude Code status line") {
-                    Task { await statusLine.install() }
-                }
-                .buttonStyle(.borderless)
-                .disabled(statusLine.isBusy)
-                .help("Updates the statusLine entry in ~/.claude/settings.json")
-                if let error = statusLine.error {
-                    Text(error).font(.caption).foregroundStyle(.orange)
-                }
-            }
         }
     }
 

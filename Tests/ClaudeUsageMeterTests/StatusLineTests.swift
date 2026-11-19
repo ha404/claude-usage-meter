@@ -118,3 +118,52 @@ private func cache(used: Double, resetsIn: Int, age: Int = 5) -> String {
 @Test func statusLineFallsBackToCacheWithoutSessionLimits() throws {
     #expect(try statusLine("{}", cache: cache(used: 55, resetsIn: 9000)).contains("55%"))
 }
+
+// MARK: - Installing and removing
+
+private let installer = script.deletingLastPathComponent().appendingPathComponent("install-statusline.sh")
+
+/// Runs the installer against a private HOME and returns the resulting settings.json.
+private func runInstaller(_ arguments: [String] = [], home: URL) throws -> [String: Any] {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/bash")
+    process.arguments = [installer.path] + arguments
+    process.environment = ["HOME": home.path, "PATH": "/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin"]
+    process.standardOutput = FileHandle.nullDevice
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+    let settings = try Data(contentsOf: home.appendingPathComponent(".claude/settings.json"))
+    return try #require(try JSONSerialization.jsonObject(with: settings) as? [String: Any])
+}
+
+private func temporaryHome(settings: String) throws -> URL {
+    let home = URL(fileURLWithPath: NSTemporaryDirectory() + UUID().uuidString)
+    let dir = home.appendingPathComponent(".claude")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try Data(settings.utf8).write(to: dir.appendingPathComponent("settings.json"))
+    return home
+}
+
+@Test func installerAddsAndRemovesTheStatusLine() throws {
+    let home = try temporaryHome(settings: #"{"theme":"dark"}"#)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let installed = home.appendingPathComponent(".claude/usage-meter-statusline.sh")
+
+    let entry = try #require(try runInstaller(home: home)["statusLine"] as? [String: Any])
+    #expect((entry["command"] as? String)?.contains("usage-meter-statusline.sh") == true)
+    #expect(entry["refreshInterval"] as? Int == 10)
+    #expect(FileManager.default.fileExists(atPath: installed.path))
+
+    let after = try runInstaller(["--uninstall"], home: home)
+    #expect(after["statusLine"] == nil)
+    #expect(after["theme"] as? String == "dark")
+    #expect(!FileManager.default.fileExists(atPath: installed.path))
+}
+
+@Test func uninstallLeavesAnotherToolsStatusLineAlone() throws {
+    let home = try temporaryHome(settings: #"{"statusLine":{"type":"command","command":"my-line.sh"}}"#)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let entry = try runInstaller(["--uninstall"], home: home)["statusLine"] as? [String: Any]
+    #expect(entry?["command"] as? String == "my-line.sh")
+}

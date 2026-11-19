@@ -9,11 +9,7 @@ final class StatusLineInstaller {
     private(set) var isInstalled = false
     private(set) var isBusy = false
     private(set) var error: String?
-    /// Installed before the status line refreshed on a timer: settings.json has no
-    /// `refreshInterval`, so an idle session keeps showing old numbers. Running the
-    /// installer again adds it — offered in the panel rather than done unasked, since it
-    /// edits the user's Claude Code settings.
-    private(set) var needsIdleRefresh = false
+    private let isPreview: Bool
 
     private static let home = FileManager.default.homeDirectoryForCurrentUser
     private static let target = home.appendingPathComponent(".claude/usage-meter-statusline.sh")
@@ -24,29 +20,41 @@ final class StatusLineInstaller {
     }
 
     /// Whether this build carries the scripts (only the .app does, not `swift run`).
-    var isAvailable: Bool { Self.bundled("install-statusline") != nil }
+    var isAvailable: Bool { isPreview || Self.bundled("install-statusline") != nil }
 
     init() {
+        isPreview = false
         refresh()
+    }
+
+    /// Fixed state without touching the disk; used to render the README screenshots.
+    init(previewInstalled: Bool) {
+        isPreview = true
+        isInstalled = previewInstalled
     }
 
     /// Re-reads settings.json, and keeps an installed script in step with this app version.
     func refresh() {
+        guard !isPreview else { return }
         // Match on the script name: older installs wrote the command without quotes.
-        let entry = Self.currentEntry()
-        isInstalled = (entry?["command"] as? String)?.contains(Self.target.lastPathComponent) == true
-        needsIdleRefresh = isInstalled && entry?["refreshInterval"] == nil
+        let command = Self.currentEntry()?["command"] as? String
+        isInstalled = command?.contains(Self.target.lastPathComponent) == true
         if isInstalled { Self.syncScript() }
     }
 
-    func install() async {
-        guard let script = Self.bundled("install-statusline") else { return }
+    /// Installs the status line, or removes it again. Installing over an existing install
+    /// is safe and brings its settings.json entry up to date.
+    func setInstalled(_ installed: Bool) async {
+        guard !isBusy, let script = Self.bundled("install-statusline") else { return }
         isBusy = true
         defer { isBusy = false }
         // GUI apps get a minimal PATH; the installer needs jq, which may come from Homebrew.
         let path = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-        let result = try? await Shell.run("/usr/bin/env", ["PATH=\(path)", "/bin/bash", script.path])
-        error = result?.status == 0 ? nil : "Couldn't install the status line (is jq installed?)"
+        let arguments = ["PATH=\(path)", "/bin/bash", script.path] + (installed ? [] : ["--uninstall"])
+        let result = try? await Shell.run("/usr/bin/env", arguments)
+        error = result?.status == 0
+            ? nil
+            : "Couldn't \(installed ? "install" : "remove") the status line (is jq installed?)"
         refresh()
     }
 

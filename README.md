@@ -42,7 +42,7 @@ open -a ClaudeUsageMeter
 The app is ad-hoc signed, not notarized, so macOS blocks the first launch. Allow it once
 in **System Settings → Privacy & Security → Open Anyway**, then open it again.
 
-To show usage in Claude Code too, click the bars and choose **Set up Claude Code status
+To show usage in Claude Code too, click the bars and tick **Claude Code status
 line** (it needs `jq`, which macOS 15+ includes; otherwise `brew install jq`).
 
 ### Release zip
@@ -92,8 +92,9 @@ An app update also refreshes the installed status line script.
   (if under 10 minutes old) and shows the newer reading. Claude Code's numbers only move
   when that session gets an API response, so an idle session would otherwise show old ones.
 - The status line is installed with `refreshInterval: 10`, so Claude Code redraws it every
-  10 seconds even while a session is idle. If you set it up with an older version, click
-  **Keep status line fresh while idle** in the panel to add that to your settings.
+  10 seconds even while a session is idle. Unticking **Claude Code status line**
+  in the panel removes the script and its `settings.json` entry again; if you set it up
+  with an older version, untick and re-tick it to pick up the interval.
 
 ## License
 
