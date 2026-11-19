@@ -29,6 +29,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
 # The app installs (and keeps updated) the Claude Code status line from these copies.
 cp scripts/statusline.sh scripts/install-statusline.sh "$APP/Contents/Resources/"
+cp assets/AppIcon.icns "$APP/Contents/Resources/"  # regenerate with scripts/make-icon.sh
 # Finder and Spotlight show this name instead of the bundle's file name (the plist names
 # must match the file name, or macOS treats the app as user-renamed). The bundle keeps
 # its space-free name, which the self-updater and Homebrew cask look for.
@@ -45,6 +46,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>$APP_NAME</string>
   <key>CFBundleExecutable</key><string>$APP_NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>

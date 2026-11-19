@@ -57,7 +57,8 @@ into `~/Applications`, and open it. The same **Open Anyway** step applies.
 ```
 
 Only the Command Line Tools are needed (no Xcode). To regenerate the screenshots
-from sample data, run `./scripts/screenshots.sh`; to run the tests, `swift test`.
+from sample data, run `./scripts/screenshots.sh`; to redraw the app icon,
+`./scripts/make-icon.sh`; to run the tests, `swift test`.
 
 ## Updates
 
