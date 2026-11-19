@@ -25,8 +25,10 @@ swift build -c release ${SWIFT_BUILD_FLAGS:-}
 BIN="$(swift build -c release ${SWIFT_BUILD_FLAGS:-} --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
+# The app installs (and keeps updated) the Claude Code status line from these copies.
+cp scripts/statusline.sh scripts/install-statusline.sh "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

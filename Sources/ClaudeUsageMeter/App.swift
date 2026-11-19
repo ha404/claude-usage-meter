@@ -5,6 +5,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let service = UsageService()
     private let updater = Updater()
+    private let statusLine = StatusLineInstaller()
     private var controller: StatusItemController?
 
     static func main() {
@@ -16,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        controller = StatusItemController(service: service, updater: updater)
+        controller = StatusItemController(service: service, updater: updater, statusLine: statusLine)
         service.start()
         updater.start()
         registerLoginItemOnFirstLaunch()

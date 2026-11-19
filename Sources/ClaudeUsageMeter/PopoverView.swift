@@ -3,6 +3,7 @@ import SwiftUI
 struct PopoverView: View {
     let service: UsageService
     let updater: Updater
+    let statusLine: StatusLineInstaller
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -62,11 +63,35 @@ struct PopoverView: View {
                     .disabled(updater.currentVersion == nil || updater.isBusy)
                 }
 
+                if statusLine.isAvailable {
+                    statusLineRow
+                }
+
                 Button("Quit") { NSApp.terminate(nil) }
                     .buttonStyle(.borderless)
             }
             .padding(16)
             .frame(width: 280)
+        }
+    }
+
+    @ViewBuilder
+    private var statusLineRow: some View {
+        if statusLine.isInstalled {
+            Label("Claude Code status line installed", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Button("Set up Claude Code status line") {
+                    Task { await statusLine.install() }
+                }
+                .buttonStyle(.borderless)
+                .disabled(statusLine.isBusy)
+                if let error = statusLine.error {
+                    Text(error).font(.caption).foregroundStyle(.orange)
+                }
+            }
         }
     }
 

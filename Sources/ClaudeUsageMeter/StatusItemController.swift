@@ -5,16 +5,18 @@ import SwiftUI
 @MainActor
 final class StatusItemController: NSObject {
     private let service: UsageService
+    private let statusLine: StatusLineInstaller
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private var redrawTimer: Timer?
 
-    init(service: UsageService, updater: Updater) {
+    init(service: UsageService, updater: Updater, statusLine: StatusLineInstaller) {
         self.service = service
+        self.statusLine = statusLine
         super.init()
 
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PopoverView(service: service, updater: updater))
+        popover.contentViewController = NSHostingController(rootView: PopoverView(service: service, updater: updater, statusLine: statusLine))
 
         if let button = statusItem.button {
             button.target = self
@@ -58,6 +60,7 @@ final class StatusItemController: NSObject {
         guard let button = statusItem.button else { return }
         guard !popover.isShown else { return popover.performClose(nil) }
         Task { await service.refresh() }
+        statusLine.refresh()
         // A transient popover only closes on outside clicks while its app is active.
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)

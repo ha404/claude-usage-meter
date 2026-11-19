@@ -30,6 +30,27 @@ time it comes back.
 
 ## Install
 
+### Homebrew
+
+```sh
+brew install --cask ha404/tap/claude-usage-meter
+open -a ClaudeUsageMeter
+```
+
+The app is ad-hoc signed, not notarized, so macOS blocks the first launch. Allow it once
+in **System Settings → Privacy & Security → Open Anyway**, then open it again.
+
+To show usage in Claude Code too, click the bars and choose **Set up Claude Code status
+line** (it needs `jq`, which macOS 15+ includes; otherwise `brew install jq`).
+
+### Release zip
+
+Download `ClaudeUsageMeter.zip` from the
+[latest release](https://github.com/ha404/claude-usage-meter/releases/latest), unzip it
+into `~/Applications`, and open it. The same **Open Anyway** step applies.
+
+### From source
+
 ```sh
 ./scripts/build-app.sh          # builds, installs to ~/Applications, launches (registers at login)
 ./scripts/install-statusline.sh # installs ~/.claude/usage-meter-statusline.sh into settings.json
@@ -37,11 +58,6 @@ time it comes back.
 
 Only the Command Line Tools are needed (no Xcode). To regenerate the screenshots
 from sample data, run `./scripts/screenshots.sh`; to run the tests, `swift test`.
-
-Or download `ClaudeUsageMeter.zip` from the
-[latest release](https://github.com/ha404/claude-usage-meter/releases/latest), unzip it
-into `~/Applications`, and open it. The build is ad-hoc signed, not notarized, so a copy
-downloaded with a browser needs right-click → Open the first time.
 
 ## Updates
 
@@ -53,9 +69,8 @@ newer release at launch and every 6 hours, downloads it, verifies its SHA-256 ag
 the one GitHub reports along with its bundle ID, version and code signature, swaps
 itself out and relaunches. Untick it to update by hand with **Check now** → **Install**.
 
-Releases are read anonymously. While the repository is private that isn't possible, so
-the app falls back to the token from the [`gh` CLI](https://cli.github.com) if you're
-signed in (`gh auth login`).
+The app updates itself, so Homebrew leaves it alone (`auto_updates true` in the cask).
+An app update also refreshes the installed status line script.
 
 ## How it works
 
