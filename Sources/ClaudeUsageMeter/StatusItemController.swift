@@ -7,16 +7,16 @@ final class StatusItemController: NSObject {
     private let service: UsageService
     private let statusLine: StatusLineInstaller
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let popover = NSPopover()
+    private let panel: MenuPanel
     private var redrawTimer: Timer?
 
     init(service: UsageService, updater: Updater, statusLine: StatusLineInstaller) {
         self.service = service
         self.statusLine = statusLine
+        panel = MenuPanel(rootView: PopoverView(service: service, updater: updater, statusLine: statusLine))
         super.init()
 
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PopoverView(service: service, updater: updater, statusLine: statusLine))
+        panel.onClose = { [weak self] in self?.statusItem.button?.highlight(false) }
 
         if let button = statusItem.button {
             button.target = self
@@ -56,14 +56,18 @@ final class StatusItemController: NSObject {
         }.joined(separator: "  ·  ")
     }
 
+    /// Opens the panel without a click (`--show-panel` at launch, for testing/screenshots).
+    func showPanel() {
+        if !panel.isVisible { togglePopover() }
+    }
+
     @objc private func togglePopover() {
         guard let button = statusItem.button else { return }
-        guard !popover.isShown else { return popover.performClose(nil) }
+        guard !panel.isVisible else { return panel.close() }
         Task { await service.refresh() }
         statusLine.refresh()
-        // A transient popover only closes on outside clicks while its app is active.
-        NSApp.activate()
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
+        panel.show(below: button)
+        // Keep the item highlighted while open, like a system menu.
+        DispatchQueue.main.async { button.highlight(true) }
     }
 }

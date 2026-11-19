@@ -21,6 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         service.start()
         updater.start()
         registerLoginItemOnFirstLaunch()
+        if CommandLine.arguments.contains("--show-panel") {
+            // Give the status item a moment to be placed in the menu bar.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.controller?.showPanel() }
+        }
     }
 
     /// Tries once per install to register at login; a failed attempt is retried next launch.
