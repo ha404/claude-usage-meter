@@ -1,3 +1,5 @@
+<img src="docs/icon.png" alt="Claude Usage Meter app icon" width="96">
+
 # Claude Usage Meter
 
 A minimal take on [Claude-Usage-Tracker](https://github.com/hamed-elfayome/Claude-Usage-Tracker):
