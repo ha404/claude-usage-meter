@@ -65,7 +65,10 @@ from sample data, run `./scripts/screenshots.sh`; to redraw the app icon,
 ## Updates
 
 Every push to `main` is built and published as a release (`v1.0.<commit count>`) by
-[`.github/workflows/release.yml`](.github/workflows/release.yml).
+[`.github/workflows/release.yml`](.github/workflows/release.yml). Its release notes are the
+commits since the previous release, written by [git-cliff](https://git-cliff.org) and
+grouped by prefix (`feat:`, `fix:`, `docs:`, anything else under "Other"; see
+[`cliff.toml`](cliff.toml)).
 
 With **Update automatically** ticked in the popover (the default), the app checks for a
 newer release at launch and every 6 hours, downloads it, verifies its SHA-256 against

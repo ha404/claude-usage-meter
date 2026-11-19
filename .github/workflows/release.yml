@@ -35,5 +35,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Release notes: the commits since the previous tag, grouped by cliff.toml.
+          brew install git-cliff
+          git cliff --unreleased --tag "v$VERSION" -o build/notes.md
           gh release create "v$VERSION" build/ClaudeUsageMeter.zip \
-            --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes
+            --target "$GITHUB_SHA" --title "v$VERSION" --notes-file build/notes.md
